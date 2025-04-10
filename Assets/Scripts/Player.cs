@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.AI;
 using UnityEngine.EventSystems;
 
 public class Player : MonoBehaviour, IKitchenObjectParent
@@ -7,6 +8,7 @@ public class Player : MonoBehaviour, IKitchenObjectParent
     public static Player Instance { get; private set; }
     
     
+    public event EventHandler OnPickedSomething;
     public event EventHandler<OnSelectedCounterChangedEventArgs> OnSelectedCounterChanged;
     public class OnSelectedCounterChangedEventArgs : EventArgs
     {
@@ -22,6 +24,8 @@ public class Player : MonoBehaviour, IKitchenObjectParent
     private Vector3 lastInteractDirection;
     private BaseCounter selectedCounter;
     private KitchenObject kitchenObject;
+    private NavMeshAgent agent;
+    private bool isNavWalking = false;
 
     private void Awake()
     {
@@ -37,6 +41,7 @@ public class Player : MonoBehaviour, IKitchenObjectParent
     {
         gameInput.OnInteractAction += GameInput_OnInteractAction;
         gameInput.OnInteractAlternateAction += GameInput_OnInteractAlternateAction;
+        agent = GetComponent<NavMeshAgent>();
     }
 
     private void GameInput_OnInteractAction(object sender, System.EventArgs e)
@@ -56,8 +61,9 @@ public class Player : MonoBehaviour, IKitchenObjectParent
     // Update is called once per frame
     private void Update()
     {
-        HandleMovement();
+        if (!isNavWalking) {HandleMovement();}
         HandleInteractions();
+        HandleMouseClick();
     }
 
     public bool IsWalking()
@@ -65,6 +71,33 @@ public class Player : MonoBehaviour, IKitchenObjectParent
         return isWalking;
     }
 
+    private void HandleMouseClick()
+    {
+        if (Input.GetMouseButtonDown(0))
+        {
+            Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+            RaycastHit hit;
+
+            if (Physics.Raycast(ray, out hit))
+            {
+                isWalking = true;
+                isNavWalking = true;
+                agent.SetDestination(hit.point);
+            }
+        }
+        // Check if the agent has reached the destination
+        if (isNavWalking && !agent.pathPending && agent.remainingDistance <= agent.stoppingDistance)
+        {
+            // We can also check if the agent is actually moving to a new destination
+            if (!agent.hasPath || agent.velocity.sqrMagnitude == 0f)
+            {
+                agent.ResetPath();
+                isNavWalking = false;
+                isWalking = false;
+            }
+        }
+    }
+    
     private void HandleInteractions()
     {
         Vector2 inputVector = gameInput.GetMovementVectorNormalized();
@@ -158,6 +191,11 @@ public class Player : MonoBehaviour, IKitchenObjectParent
     public void SetKitchenObject(KitchenObject kitchenObject)
     {
         this.kitchenObject = kitchenObject;
+
+        if (kitchenObject != null)
+        {
+            OnPickedSomething?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     public KitchenObject GetKitchenObject()
